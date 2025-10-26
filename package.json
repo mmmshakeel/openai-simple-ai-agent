@@ -1,0 +1,28 @@
+{
+  "name": "openai-node-agent",
+  "version": "1.0.0",
+  "description": "An AI agent built with the OpenAI Node.js SDK that demonstrates conversational AI and function calling capabilities",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "openai",
+    "ai",
+    "agent",
+    "chatbot",
+    "function-calling"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "openai": "^6.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
