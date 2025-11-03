@@ -339,6 +339,30 @@ class OpenAIClient {
         // Generic error handling
         return new Error(`OpenAI client initialization failed: ${error.message}`);
     }
+
+    /**
+     * Clean up OpenAI client resources
+     * @returns {Promise<void>}
+     */
+    async cleanup() {
+        try {
+            // Clear the client reference
+            this.client = null;
+            
+            // Reset configuration to defaults
+            this.config = {
+                model: 'gpt-4',
+                temperature: 0.7,
+                maxTokens: 1000
+            };
+            
+            console.log('🧹 OpenAI client cleanup completed');
+            
+        } catch (error) {
+            console.error('Error during OpenAI client cleanup:', error.message);
+            throw error;
+        }
+    }
 }
 
 export default OpenAIClient;

@@ -797,6 +797,30 @@ class ChatManager {
             };
         }
     }
+
+    /**
+     * Clean up chat manager resources
+     * @returns {Promise<void>}
+     */
+    async cleanup() {
+        try {
+            // Clear any pending timeouts or intervals
+            // (Currently none, but placeholder for future use)
+            
+            // Clear message history to free memory
+            this.messageHistory = [];
+            
+            // Reset state
+            this.maxHistoryLength = 20;
+            this.maxTokensPerMessage = 4000;
+            
+            console.log('🧹 Chat manager cleanup completed');
+            
+        } catch (error) {
+            console.error('Error during chat manager cleanup:', error.message);
+            throw error;
+        }
+    }
 }
 
 export default ChatManager;

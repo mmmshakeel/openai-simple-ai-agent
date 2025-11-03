@@ -481,6 +481,23 @@ class FunctionRegistry {
             );
         }
     }
+
+    /**
+     * Clean up function registry resources
+     * @returns {Promise<void>}
+     */
+    async cleanup() {
+        try {
+            // Clear all registered functions
+            this.functions.clear();
+            
+            console.log('🧹 Function registry cleanup completed');
+            
+        } catch (error) {
+            console.error('Error during function registry cleanup:', error.message);
+            throw error;
+        }
+    }
 }
 
 export default FunctionRegistry;
