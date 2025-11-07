@@ -2,7 +2,33 @@
 
 /**
  * OpenAI Node.js Agent - Interactive CLI
- * Main entry point for the AI agent with command-line interface
+ * 
+ * Main entry point for the AI agent application. Provides an interactive
+ * command-line interface for chatting with an AI assistant that can call
+ * functions to perform tasks like getting weather, calculating math, etc.
+ * 
+ * Features:
+ * - Interactive readline-based CLI with colored output
+ * - Automatic conversation history management and saving
+ * - Graceful shutdown with resource cleanup
+ * - Comprehensive error handling and user guidance
+ * - Built-in commands for help, stats, and configuration
+ * 
+ * @module index
+ * @requires readline
+ * @requires dotenv
+ * @requires chalk
+ * @requires ./src/openai-client
+ * @requires ./src/function-registry
+ * @requires ./src/chat-manager
+ * @requires ./src/built-in-functions
+ * 
+ * @example
+ * // Run the application
+ * node index.js
+ * 
+ * // Or with npm
+ * npm start
  */
 
 import readline from 'readline';
@@ -16,7 +42,29 @@ import { functionSchemas, availableFunctions } from './src/built-in-functions.js
 // Load environment variables
 dotenv.config();
 
+/**
+ * AgentCLI - Command-line interface for the OpenAI agent
+ * 
+ * Manages the interactive CLI experience including:
+ * - Component initialization and integration
+ * - User input handling and command processing
+ * - Visual feedback (loading indicators, colored output)
+ * - Graceful shutdown and conversation saving
+ * 
+ * @class AgentCLI
+ * @example
+ * const cli = new AgentCLI();
+ * await cli.initialize();
+ * cli.start();
+ */
 class AgentCLI {
+    /**
+     * Create a new AgentCLI instance.
+     * Initializes all internal state but does not connect to OpenAI yet.
+     * Call initialize() to set up the agent.
+     * 
+     * @constructor
+     */
     constructor() {
         this.rl = null;
         this.openaiClient = null;
@@ -29,7 +77,20 @@ class AgentCLI {
     }
 
     /**
-     * Initialize the CLI application with comprehensive integration validation
+     * Initialize the CLI application with comprehensive integration validation.
+     * Sets up all components (OpenAI client, function registry, chat manager)
+     * and validates that they are properly integrated.
+     * 
+     * @async
+     * @throws {Error} If initialization fails (API key missing, network issues, etc.)
+     * @example
+     * const cli = new AgentCLI();
+     * try {
+     *   await cli.initialize();
+     *   cli.start();
+     * } catch (error) {
+     *   console.error('Failed to initialize:', error.message);
+     * }
      */
     async initialize() {
         try {
@@ -240,7 +301,13 @@ class AgentCLI {
     }
 
     /**
-     * Start the interactive conversation loop
+     * Start the interactive conversation loop.
+     * Begins accepting user input and processing messages.
+     * Must be called after initialize().
+     * 
+     * @example
+     * await cli.initialize();
+     * cli.start(); // Now accepting user input
      */
     start() {
         this.isRunning = true;
@@ -873,7 +940,14 @@ class AgentCLI {
 }
 
 /**
- * Main application entry point
+ * Main application entry point.
+ * Sets up error handlers, initializes the CLI, and starts the agent.
+ * 
+ * @async
+ * @function main
+ * @example
+ * // This is called automatically when the script is run directly
+ * // node index.js
  */
 async function main() {
     const cli = new AgentCLI();

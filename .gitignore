@@ -49,9 +49,6 @@ logs
 # Yarn Integrity file
 .yarn-integrity
 
-# dotenv environment variables file
-.env
-
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
@@ -79,3 +76,5 @@ logs
 
 # Stores VSCode versions used for testing VSCode extensions
 .vscode-test
+
+conversations/

@@ -1,9 +1,41 @@
 /**
  * Chat Manager for OpenAI Agent
- * Orchestrates conversations, maintains context, and handles function calling flow
+ * 
+ * Orchestrates conversations between users and the AI agent, managing:
+ * - Conversation history and context
+ * - Message formatting for OpenAI API
+ * - Function calling flow and execution
+ * - Token management and history trimming
+ * - Error handling and recovery
+ * 
+ * @class ChatManager
+ * @example
+ * // Create a chat manager
+ * const chatManager = new ChatManager(openaiClient, functionRegistry);
+ * 
+ * // Start a conversation
+ * chatManager.startConversation();
+ * 
+ * // Process user messages
+ * const response = await chatManager.processMessage('Hello!');
+ * console.log(response.message);
+ * 
+ * // Get conversation stats
+ * const stats = chatManager.getConversationStats();
+ * console.log(`Messages: ${stats.totalMessages}`);
  */
 
 class ChatManager {
+    /**
+     * Create a new ChatManager instance.
+     * 
+     * @constructor
+     * @param {OpenAIClient} openaiClient - Initialized OpenAI client instance
+     * @param {FunctionRegistry} functionRegistry - Function registry with registered functions
+     * @throws {Error} If required dependencies are missing or not initialized
+     * @example
+     * const chatManager = new ChatManager(openaiClient, functionRegistry);
+     */
     constructor(openaiClient, functionRegistry) {
         // Validate required dependencies
         if (!openaiClient) {
@@ -38,8 +70,18 @@ class ChatManager {
     }
 
     /**
-     * Initialize a new conversation session
-     * @param {string} systemPrompt - Optional custom system prompt
+     * Initialize a new conversation session.
+     * Clears existing history and sets up a fresh conversation with optional custom system prompt.
+     * 
+     * @param {string} [systemPrompt=null] - Optional custom system prompt to guide the AI's behavior
+     * @example
+     * // Start with default system prompt
+     * chatManager.startConversation();
+     * 
+     * // Start with custom system prompt
+     * chatManager.startConversation(
+     *   'You are a helpful coding assistant specializing in JavaScript.'
+     * );
      */
     startConversation(systemPrompt = null) {
         // Reset conversation history
@@ -252,8 +294,20 @@ class ChatManager {
     }
 
     /**
-     * Get conversation statistics
-     * @returns {Object} Statistics about the conversation
+     * Get statistics about the current conversation.
+     * Provides metrics on message counts, token usage, and conversation duration.
+     * 
+     * @returns {Object} Conversation statistics
+     * @returns {number} return.totalMessages - Total number of messages (excluding system)
+     * @returns {number} return.userMessages - Number of user messages
+     * @returns {number} return.assistantMessages - Number of assistant messages
+     * @returns {number} return.functionMessages - Number of function result messages
+     * @returns {number} return.estimatedTokens - Estimated total token count
+     * @returns {string} return.conversationStarted - ISO timestamp of first message
+     * @example
+     * const stats = chatManager.getConversationStats();
+     * console.log(`Total messages: ${stats.totalMessages}`);
+     * console.log(`Estimated tokens: ${stats.estimatedTokens}`);
      */
     getConversationStats() {
         const history = this.getHistory(false); // Exclude system message
@@ -295,11 +349,34 @@ class ChatManager {
     }
 
     /**
-     * Process user input and generate response
-     * Main conversation flow that handles both regular responses and function calling
-     * @param {string} userInput - User's message
-     * @param {Object} options - Processing options
-     * @returns {Promise<Object>} Response object with message and metadata
+     * Process user input and generate a response.
+     * This is the main conversation flow that handles both regular text responses
+     * and function calling. Automatically manages conversation history and context.
+     * 
+     * @async
+     * @param {string} userInput - The user's message
+     * @param {Object} [options={}] - Processing options
+     * @param {boolean} [options.includeHistory=true] - Whether to include conversation history
+     * @param {number} [options.maxTokens=null] - Maximum tokens for this request
+     * @param {number} [options.temperature=null] - Temperature override for this request
+     * @returns {Promise<Object>} Response object
+     * @returns {boolean} return.success - Whether the request succeeded
+     * @returns {string} return.message - The assistant's response message
+     * @returns {Object} [return.error] - Error details if failed
+     * @returns {Object} [return.usage] - Token usage information
+     * @returns {Object} [return.functionCall] - Function call details if a function was called
+     * @example
+     * // Basic message processing
+     * const response = await chatManager.processMessage('What time is it?');
+     * if (response.success) {
+     *   console.log(response.message);
+     * }
+     * 
+     * // With options
+     * const response = await chatManager.processMessage('Tell me a story', {
+     *   temperature: 0.9,
+     *   maxTokens: 500
+     * });
      */
     async processMessage(userInput, options = {}) {
         const { 
@@ -531,10 +608,26 @@ class ChatManager {
     }
 
     /**
-     * Handle function call from OpenAI model
-     * Executes the function and sends result back to model for final response
+     * Handle function call from the OpenAI model.
+     * Executes the requested function through the function registry and sends
+     * the result back to the model to generate a final response.
+     * 
+     * @async
      * @param {Object} functionCall - Function call object from OpenAI
+     * @param {string} functionCall.name - Name of the function to call
+     * @param {string} functionCall.arguments - JSON string of function arguments
      * @returns {Promise<Object>} Final response after function execution
+     * @returns {boolean} return.success - Whether the operation succeeded
+     * @returns {string} return.message - The final response message
+     * @returns {Object} [return.error] - Error details if failed
+     * @example
+     * // This is typically called automatically by processMessage
+     * // when the model decides to call a function
+     * const functionCall = {
+     *   name: 'getCurrentTime',
+     *   arguments: '{}'
+     * };
+     * const response = await chatManager.handleFunctionCall(functionCall);
      */
     async handleFunctionCall(functionCall) {
         try {
@@ -828,8 +921,20 @@ class ChatManager {
     }
 
     /**
-     * Get available functions summary
-     * @returns {Array} Array of function summaries
+     * Get a summary of all available functions.
+     * Returns simplified function information suitable for display to users.
+     * 
+     * @returns {Array<Object>} Array of function summaries
+     * @returns {string} return[].name - Function name
+     * @returns {string} return[].description - Function description
+     * @returns {Array<string>} return[].parameters - List of parameter names
+     * @returns {Array<string>} return[].required - List of required parameter names
+     * @example
+     * const functions = chatManager.getAvailableFunctions();
+     * functions.forEach(func => {
+     *   console.log(`${func.name}: ${func.description}`);
+     *   console.log(`  Parameters: ${func.parameters.join(', ')}`);
+     * });
      */
     getAvailableFunctions() {
         const schemas = this.functionRegistry.getFunctionSchemas();

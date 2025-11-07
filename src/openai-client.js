@@ -2,7 +2,34 @@ import OpenAI from 'openai';
 
 /**
  * OpenAI Client Configuration Module
- * Handles OpenAI API client initialization, configuration, and error handling
+ * 
+ * Provides a robust wrapper around the OpenAI SDK with features including:
+ * - API key validation and authentication
+ * - Automatic retry logic with exponential backoff
+ * - Comprehensive error handling and user-friendly messages
+ * - Configuration management for model, temperature, and token limits
+ * - Support for function calling in chat completions
+ * 
+ * @class OpenAIClient
+ * @example
+ * // Initialize the client
+ * const client = new OpenAIClient();
+ * await client.initialize('sk-your-api-key', {
+ *   model: 'gpt-4',
+ *   temperature: 0.7,
+ *   maxTokens: 1000
+ * });
+ * 
+ * // Make a chat completion request
+ * const response = await client.createChatCompletion([
+ *   { role: 'user', content: 'Hello!' }
+ * ]);
+ * 
+ * // With function calling
+ * const response = await client.createChatCompletion(
+ *   messages,
+ *   functionSchemas
+ * );
  */
 class OpenAIClient {
     constructor() {
@@ -15,13 +42,23 @@ class OpenAIClient {
     }
 
     /**
-     * Initialize the OpenAI client with API key validation
-     * @param {string} apiKey - The OpenAI API key
-     * @param {Object} options - Configuration options
-     * @param {string} options.model - The model to use (default: gpt-4)
-     * @param {number} options.temperature - Temperature setting (default: 0.7)
-     * @param {number} options.maxTokens - Maximum tokens (default: 1000)
-     * @throws {Error} If API key is invalid or missing
+     * Initialize the OpenAI client with API key validation.
+     * Validates the API key format and tests connectivity to the OpenAI API.
+     * 
+     * @async
+     * @param {string} apiKey - Your OpenAI API key (must start with 'sk-')
+     * @param {Object} [options={}] - Configuration options
+     * @param {string} [options.model='gpt-4'] - OpenAI model to use (e.g., 'gpt-4', 'gpt-3.5-turbo')
+     * @param {number} [options.temperature=0.7] - Sampling temperature (0.0-2.0)
+     * @param {number} [options.maxTokens=1000] - Maximum tokens in response (1-4096)
+     * @throws {Error} If API key is invalid, missing, or authentication fails
+     * @example
+     * const client = new OpenAIClient();
+     * await client.initialize(process.env.OPENAI_API_KEY, {
+     *   model: 'gpt-4',
+     *   temperature: 0.7,
+     *   maxTokens: 1500
+     * });
      */
     async initialize(apiKey, options = {}) {
         // Validate API key
@@ -58,8 +95,16 @@ class OpenAIClient {
     }
 
     /**
-     * Get the current configuration
+     * Get the current configuration settings.
+     * Returns a copy to prevent external modification.
+     * 
      * @returns {Object} Current configuration object
+     * @returns {string} return.model - Current model name
+     * @returns {number} return.temperature - Current temperature setting
+     * @returns {number} return.maxTokens - Current max tokens setting
+     * @example
+     * const config = client.getConfig();
+     * console.log(`Using model: ${config.model}`);
      */
     getConfig() {
         return { ...this.config };
@@ -78,8 +123,15 @@ class OpenAIClient {
     }
 
     /**
-     * Check if client is initialized and ready
-     * @returns {boolean} True if client is ready
+     * Check if the client is initialized and ready to make API calls.
+     * 
+     * @returns {boolean} True if client is initialized, false otherwise
+     * @example
+     * if (client.isReady()) {
+     *   const response = await client.createChatCompletion(messages);
+     * } else {
+     *   console.error('Client not initialized');
+     * }
      */
     isReady() {
         return this.client !== null;
@@ -98,12 +150,35 @@ class OpenAIClient {
     }
 
     /**
-     * Create a chat completion with retry logic and function calling support
-     * @param {Array} messages - Array of message objects with role and content
-     * @param {Array} functions - Optional array of function definitions for function calling
-     * @param {Object} options - Additional options for the request
-     * @returns {Promise<Object>} The chat completion response
-     * @throws {Error} If request fails after retries
+     * Create a chat completion with retry logic and function calling support.
+     * Automatically retries failed requests with exponential backoff.
+     * 
+     * @async
+     * @param {Array<Object>} messages - Array of message objects
+     * @param {string} messages[].role - Message role ('system', 'user', 'assistant', 'function')
+     * @param {string} messages[].content - Message content
+     * @param {Object} [messages[].function_call] - Function call data (for assistant messages)
+     * @param {string} [messages[].name] - Function name (for function messages)
+     * @param {Array<Object>} [functions=null] - Optional function definitions for function calling
+     * @param {Object} [options={}] - Additional request options (overrides defaults)
+     * @returns {Promise<Object>} OpenAI chat completion response
+     * @returns {Array} return.choices - Array of completion choices
+     * @returns {Object} return.choices[].message - Generated message
+     * @returns {Object} return.usage - Token usage information
+     * @throws {Error} If request fails after all retry attempts
+     * @example
+     * // Basic chat completion
+     * const response = await client.createChatCompletion([
+     *   { role: 'system', content: 'You are a helpful assistant.' },
+     *   { role: 'user', content: 'What is 2+2?' }
+     * ]);
+     * console.log(response.choices[0].message.content);
+     * 
+     * // With function calling
+     * const response = await client.createChatCompletion(
+     *   messages,
+     *   [{ name: 'getCurrentTime', description: '...', parameters: {...} }]
+     * );
      */
     async createChatCompletion(messages, functions = null, options = {}) {
         if (!this.client) {

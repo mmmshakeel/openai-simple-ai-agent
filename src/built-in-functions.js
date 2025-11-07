@@ -1,11 +1,34 @@
 /**
  * Built-in Functions for OpenAI Agent
- * Contains demonstration functions for weather and location services
+ * 
+ * This module provides pre-configured functions that the AI agent can call
+ * during conversations. These functions demonstrate the OpenAI function calling
+ * capability and can be used as templates for creating custom functions.
+ * 
+ * @module built-in-functions
+ * @example
+ * // Import and use in your agent
+ * import { functionSchemas, availableFunctions } from './built-in-functions.js';
+ * functionRegistry.registerBuiltInFunctions(functionSchemas, availableFunctions);
  */
 
 /**
- * Get user's location based on their IP address
- * @returns {Promise<Object>} Location data including latitude, longitude, city, etc.
+ * Get user's location based on their IP address using the ipapi.co service.
+ * This function makes an external API call to determine the user's approximate
+ * location including city, region, country, and coordinates.
+ * 
+ * @async
+ * @function getLocation
+ * @returns {Promise<Object>} Location data object
+ * @returns {string} return.city - City name
+ * @returns {string} return.region - Region/state name
+ * @returns {string} return.country - Country code
+ * @returns {number} return.latitude - Latitude coordinate
+ * @returns {number} return.longitude - Longitude coordinate
+ * @throws {Error} If the API request fails or returns invalid data
+ * @example
+ * const location = await getLocation();
+ * console.log(`You are in ${location.city}, ${location.country}`);
  */
 async function getLocation() {
   try {
@@ -21,9 +44,24 @@ async function getLocation() {
 }
 
 /**
- * Get current weather for a given location
- * @param {Object} args - Arguments object containing latitude and longitude
- * @returns {Promise<Object>} Weather data from Open-Meteo API
+ * Get current weather for a given location using the Open-Meteo API.
+ * This function retrieves real-time weather data including temperature,
+ * wind speed, and weather conditions for the specified coordinates.
+ * 
+ * @async
+ * @function getCurrentWeather
+ * @param {Object} args - Function arguments
+ * @param {string} args.latitude - Latitude coordinate as a string
+ * @param {string} args.longitude - Longitude coordinate as a string
+ * @returns {Promise<Object>} Weather data object
+ * @returns {Object} return.current_weather - Current weather conditions
+ * @returns {number} return.current_weather.temperature - Temperature in Celsius
+ * @returns {number} return.current_weather.windspeed - Wind speed in km/h
+ * @returns {number} return.current_weather.weathercode - WMO weather code
+ * @throws {Error} If the API request fails or coordinates are invalid
+ * @example
+ * const weather = await getCurrentWeather({ latitude: "40.7128", longitude: "-74.0060" });
+ * console.log(`Temperature: ${weather.current_weather.temperature}°C`);
  */
 async function getCurrentWeather(args) {
   try {
@@ -41,17 +79,33 @@ async function getCurrentWeather(args) {
 }
 
 /**
- * Get current time (simple demonstration function)
- * @returns {string} Current date and time
+ * Get the current date and time in ISO 8601 format.
+ * This is a simple demonstration function that returns the current
+ * timestamp without requiring any parameters.
+ * 
+ * @function getCurrentTime
+ * @returns {string} Current date and time in ISO 8601 format (e.g., "2025-11-07T10:30:45.123Z")
+ * @example
+ * const time = getCurrentTime();
+ * console.log(`Current time: ${time}`);
  */
 function getCurrentTime() {
   return new Date().toISOString();
 }
 
 /**
- * Calculate simple math expressions (demonstration function)
- * @param {Object} args - Arguments object containing expression
- * @returns {number} Result of the calculation
+ * Calculate simple mathematical expressions safely.
+ * This function evaluates basic arithmetic expressions with safety checks
+ * to prevent code injection. Only numbers and basic operators are allowed.
+ * 
+ * @function calculateMath
+ * @param {Object} args - Function arguments
+ * @param {string} args.expression - Mathematical expression to evaluate (e.g., "2 + 2", "10 * 5 - 3")
+ * @returns {number} The calculated result
+ * @throws {Error} If the expression contains invalid characters or produces invalid results
+ * @example
+ * const result = calculateMath({ expression: "15 * 8 + 42" });
+ * console.log(`Result: ${result}`); // Result: 162
  */
 function calculateMath(args) {
   try {
@@ -79,7 +133,21 @@ function calculateMath(args) {
   }
 }
 
-// OpenAI-compatible function schemas
+/**
+ * OpenAI-compatible function schemas for all built-in functions.
+ * These schemas define the function signatures that the AI model uses
+ * to understand when and how to call each function.
+ * 
+ * @constant {Array<Object>} functionSchemas
+ * @property {string} type - Always "function" for function definitions
+ * @property {Object} function - Function definition object
+ * @property {string} function.name - Function name (must match handler name)
+ * @property {string} function.description - Human-readable description for the AI
+ * @property {Object} function.parameters - JSON Schema defining function parameters
+ * @example
+ * // Use these schemas when registering functions
+ * functionRegistry.registerBuiltInFunctions(functionSchemas, availableFunctions);
+ */
 export const functionSchemas = [
   {
     type: "function",
@@ -143,7 +211,20 @@ export const functionSchemas = [
   }
 ];
 
-// Available functions mapping
+/**
+ * Mapping of function names to their handler implementations.
+ * This object connects the function schemas to their actual implementations.
+ * 
+ * @constant {Object<string, Function>} availableFunctions
+ * @property {Function} getCurrentWeather - Weather data retrieval function
+ * @property {Function} getLocation - Location detection function
+ * @property {Function} getCurrentTime - Current time function
+ * @property {Function} calculateMath - Math calculation function
+ * @example
+ * // Access a specific function
+ * const timeHandler = availableFunctions.getCurrentTime;
+ * const currentTime = timeHandler();
+ */
 export const availableFunctions = {
   getCurrentWeather,
   getLocation,
@@ -151,6 +232,41 @@ export const availableFunctions = {
   calculateMath,
 };
 
+/**
+ * Default export containing all functions and schemas.
+ * 
+ * @example
+ * // Import everything
+ * import builtInFunctions from './built-in-functions.js';
+ * 
+ * // Or import specific items
+ * import { getCurrentTime, functionSchemas } from './built-in-functions.js';
+ * 
+ * // Extending with custom functions:
+ * // 1. Create your function handler
+ * function myCustomFunction(args) {
+ *   return `Hello, ${args.name}!`;
+ * }
+ * 
+ * // 2. Define the schema
+ * const mySchema = {
+ *   type: "function",
+ *   function: {
+ *     name: "myCustomFunction",
+ *     description: "Greet a user by name",
+ *     parameters: {
+ *       type: "object",
+ *       properties: {
+ *         name: { type: "string", description: "User's name" }
+ *       },
+ *       required: ["name"]
+ *     }
+ *   }
+ * };
+ * 
+ * // 3. Register with the function registry
+ * functionRegistry.registerFunction("myCustomFunction", mySchema.function, myCustomFunction);
+ */
 export default {
   functionSchemas,
   availableFunctions,

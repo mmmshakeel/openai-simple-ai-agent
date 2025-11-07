@@ -1,6 +1,35 @@
 /**
  * Function Registry for OpenAI Agent
- * Manages function registration, schema validation, and execution
+ * 
+ * Manages the registration, validation, and safe execution of functions
+ * that can be called by the AI agent. Provides schema validation,
+ * argument checking, timeout protection, and error handling.
+ * 
+ * @class FunctionRegistry
+ * @example
+ * // Create a new registry
+ * const registry = new FunctionRegistry();
+ * 
+ * // Register a function
+ * registry.registerFunction(
+ *   'greet',
+ *   {
+ *     name: 'greet',
+ *     description: 'Greet a user',
+ *     parameters: {
+ *       type: 'object',
+ *       properties: {
+ *         name: { type: 'string', description: 'User name' }
+ *       },
+ *       required: ['name']
+ *     }
+ *   },
+ *   (args) => `Hello, ${args.name}!`
+ * );
+ * 
+ * // Execute the function
+ * const result = await registry.executeFunction('greet', { name: 'Alice' });
+ * console.log(result.result); // "Hello, Alice!"
  */
 
 class FunctionRegistry {
@@ -9,10 +38,33 @@ class FunctionRegistry {
     }
 
     /**
-     * Register a function with OpenAI-compatible schema
-     * @param {string} name - Function name
-     * @param {Object} schema - OpenAI function schema
-     * @param {Function} handler - Function implementation
+     * Register a function with OpenAI-compatible schema.
+     * The function will be available for the AI agent to call during conversations.
+     * 
+     * @param {string} name - Unique function name (must match schema.name)
+     * @param {Object} schema - OpenAI-compatible function schema
+     * @param {string} schema.name - Function name
+     * @param {string} schema.description - Human-readable description
+     * @param {Object} schema.parameters - JSON Schema for parameters
+     * @param {Function} handler - Function implementation that receives args object
+     * @throws {Error} If name, schema, or handler is invalid
+     * @example
+     * registry.registerFunction(
+     *   'addNumbers',
+     *   {
+     *     name: 'addNumbers',
+     *     description: 'Add two numbers together',
+     *     parameters: {
+     *       type: 'object',
+     *       properties: {
+     *         a: { type: 'number', description: 'First number' },
+     *         b: { type: 'number', description: 'Second number' }
+     *       },
+     *       required: ['a', 'b']
+     *     }
+     *   },
+     *   (args) => args.a + args.b
+     * );
      */
     registerFunction(name, schema, handler) {
         // Validate function name
@@ -81,10 +133,25 @@ class FunctionRegistry {
     }
 
     /**
-     * Execute a registered function with argument validation
-     * @param {string} name - Function name
-     * @param {Object} args - Function arguments
-     * @returns {Promise<Object>} - Formatted function result
+     * Execute a registered function with argument validation and timeout protection.
+     * Validates arguments against the function's schema before execution.
+     * 
+     * @async
+     * @param {string} name - Name of the function to execute
+     * @param {Object} [args={}] - Arguments to pass to the function
+     * @returns {Promise<Object>} Execution result object
+     * @returns {boolean} return.success - Whether execution succeeded
+     * @returns {*} return.result - Function result (if successful)
+     * @returns {Object} return.error - Error details (if failed)
+     * @returns {string} return.functionName - Name of executed function
+     * @returns {string} return.timestamp - ISO timestamp of execution
+     * @example
+     * const result = await registry.executeFunction('calculateMath', { expression: '2 + 2' });
+     * if (result.success) {
+     *   console.log('Result:', result.result); // 4
+     * } else {
+     *   console.error('Error:', result.error.message);
+     * }
      */
     async executeFunction(name, args = {}) {
         const functionData = this.functions.get(name);
@@ -345,8 +412,16 @@ class FunctionRegistry {
     }
 
     /**
-     * Get OpenAI-compatible function schemas for all registered functions
-     * @returns {Array} - Array of function schemas
+     * Get OpenAI-compatible function schemas for all registered functions.
+     * These schemas can be passed directly to the OpenAI API.
+     * 
+     * @returns {Array<Object>} Array of function schemas in OpenAI format
+     * @example
+     * const schemas = registry.getFunctionSchemas();
+     * const response = await openai.chat.completions.create({
+     *   messages: [...],
+     *   functions: schemas
+     * });
      */
     getFunctionSchemas() {
         return Array.from(this.functions.values()).map(func => func.schema);
@@ -378,9 +453,23 @@ class FunctionRegistry {
     }
 
     /**
-     * Register multiple functions from a schema/handler mapping
-     * @param {Array} schemas - Array of OpenAI function schemas
-     * @param {Object} handlers - Object mapping function names to handlers
+     * Register multiple functions from schema and handler mappings.
+     * This is a convenience method for bulk registration of functions.
+     * 
+     * @param {Array<Object>} schemas - Array of OpenAI function schema wrappers
+     * @param {Object} schemas[].function - The actual function schema
+     * @param {Object<string, Function>} handlers - Object mapping function names to handler functions
+     * @throws {Error} If a handler is missing for any schema
+     * @example
+     * const schemas = [
+     *   { function: { name: 'func1', description: '...', parameters: {...} } },
+     *   { function: { name: 'func2', description: '...', parameters: {...} } }
+     * ];
+     * const handlers = {
+     *   func1: (args) => 'result1',
+     *   func2: (args) => 'result2'
+     * };
+     * registry.registerBuiltInFunctions(schemas, handlers);
      */
     registerBuiltInFunctions(schemas, handlers) {
         for (const schemaWrapper of schemas) {
@@ -445,11 +534,27 @@ class FunctionRegistry {
     }
 
     /**
-     * Execute function with comprehensive safety measures
-     * @param {string} name - Function name
-     * @param {Object} args - Function arguments
-     * @param {Object} options - Execution options
-     * @returns {Promise<Object>} - Execution result
+     * Execute function with comprehensive safety measures including timeout,
+     * result sanitization, and execution metadata.
+     * 
+     * @async
+     * @param {string} name - Function name to execute
+     * @param {Object} [args={}] - Function arguments
+     * @param {Object} [options={}] - Execution options
+     * @param {number} [options.timeout=5000] - Timeout in milliseconds
+     * @param {boolean} [options.sanitizeResults=true] - Whether to sanitize results for JSON serialization
+     * @returns {Promise<Object>} Enhanced execution result with metadata
+     * @returns {boolean} return.success - Whether execution succeeded
+     * @returns {*} return.result - Function result (sanitized if enabled)
+     * @returns {number} return.executionTime - Execution time in milliseconds
+     * @returns {number} return.timeout - Timeout value used
+     * @example
+     * const result = await registry.executeFunctionSafely(
+     *   'slowFunction',
+     *   { data: 'test' },
+     *   { timeout: 10000, sanitizeResults: true }
+     * );
+     * console.log(`Executed in ${result.executionTime}ms`);
      */
     async executeFunctionSafely(name, args = {}, options = {}) {
         const { timeout = 5000, sanitizeResults = true } = options;
