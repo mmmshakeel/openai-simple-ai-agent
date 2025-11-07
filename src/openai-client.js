@@ -117,8 +117,35 @@ class OpenAIClient {
 
         // Validate message format
         for (const message of messages) {
-            if (!message.role || !message.content) {
-                throw new Error('Each message must have role and content properties');
+            if (!message.role) {
+                throw new Error('Each message must have a role property');
+            }
+            
+            // Debug logging for development
+            if (process.env.NODE_ENV === 'development') {
+                console.log('Validating message:', JSON.stringify(message, null, 2));
+            }
+            
+            // Content can be null for assistant messages with function calls
+            if (message.role === 'assistant' && message.function_call) {
+                // Assistant messages with function calls can have null content
+                continue;
+            }
+            
+            // Function messages must have both content and name
+            if (message.role === 'function') {
+                if (!message.name) {
+                    throw new Error('Function messages must have a name property');
+                }
+                if (message.content === undefined || message.content === null) {
+                    throw new Error('Function messages must have content property');
+                }
+                continue;
+            }
+            
+            // All other messages must have content
+            if (message.content === undefined || message.content === null) {
+                throw new Error(`Message with role '${message.role}' must have content property`);
             }
         }
 

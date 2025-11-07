@@ -5,6 +5,20 @@
 
 class ChatManager {
     constructor(openaiClient, functionRegistry) {
+        // Validate required dependencies
+        if (!openaiClient) {
+            throw new Error('OpenAI client is required for ChatManager');
+        }
+        
+        if (!functionRegistry) {
+            throw new Error('Function registry is required for ChatManager');
+        }
+        
+        // Validate that OpenAI client is properly initialized
+        if (typeof openaiClient.isReady !== 'function' || !openaiClient.isReady()) {
+            throw new Error('OpenAI client must be initialized before creating ChatManager');
+        }
+        
         this.openaiClient = openaiClient;
         this.functionRegistry = functionRegistry;
         
@@ -57,9 +71,9 @@ class ChatManager {
             throw new Error(`Invalid message role: ${role}. Must be one of: ${validRoles.join(', ')}`);
         }
 
-        // Validate content
-        if (typeof content !== 'string') {
-            throw new Error('Message content must be a string');
+        // Validate content (allow null for function call messages)
+        if (content !== null && content !== undefined && typeof content !== 'string') {
+            throw new Error('Message content must be a string, null, or undefined');
         }
 
         // Create message object
@@ -98,13 +112,22 @@ class ChatManager {
         return this.messageHistory.map(msg => {
             // Create base message object
             const formattedMsg = {
-                role: msg.role,
-                content: msg.content
+                role: msg.role
             };
 
             // Add function call information if present
             if (msg.function_call) {
                 formattedMsg.function_call = msg.function_call;
+                // For assistant messages with function calls, content should be null
+                if (msg.role === 'assistant') {
+                    formattedMsg.content = null;
+                } else {
+                    // For function messages, content should be a string
+                    formattedMsg.content = typeof msg.content === 'string' ? msg.content : '';
+                }
+            } else {
+                // For regular messages, ensure content is a string
+                formattedMsg.content = typeof msg.content === 'string' ? msg.content : '';
             }
 
             // Add function name for function messages
@@ -335,21 +358,43 @@ class ChatManager {
         } catch (error) {
             console.error('❌ Error processing message:', error.message);
             
+            // Categorize error types for better handling
+            let errorType = 'PROCESSING_ERROR';
+            let userMessage = `I encountered an error: ${error.message}`;
+            
+            if (error.message.includes('API key') || error.message.includes('401') || error.message.includes('403')) {
+                errorType = 'AUTHENTICATION_ERROR';
+                userMessage = 'Authentication failed. Please check your OpenAI API key configuration.';
+            } else if (error.message.includes('rate limit') || error.message.includes('429')) {
+                errorType = 'RATE_LIMIT_ERROR';
+                userMessage = 'Rate limit exceeded. Please wait a moment before trying again.';
+            } else if (error.message.includes('network') || error.message.includes('ENOTFOUND') || error.message.includes('ECONNREFUSED')) {
+                errorType = 'NETWORK_ERROR';
+                userMessage = 'Network error. Please check your internet connection.';
+            } else if (error.message.includes('not initialized') || error.message.includes('not ready')) {
+                errorType = 'INITIALIZATION_ERROR';
+                userMessage = 'System components are not properly initialized.';
+            } else if (error.message.includes('function')) {
+                errorType = 'FUNCTION_ERROR';
+                userMessage = 'There was an issue with function execution.';
+            }
+            
             // Create error response
             const errorResponse = {
                 success: false,
-                message: `I encountered an error: ${error.message}`,
+                message: userMessage,
                 error: {
-                    type: 'PROCESSING_ERROR',
+                    type: errorType,
                     message: error.message,
-                    timestamp: new Date().toISOString()
+                    timestamp: new Date().toISOString(),
+                    stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
                 },
                 requiresFunctionCall: false,
                 functionCall: null
             };
 
-            // Add error message to history for context
-            this.addToHistory('assistant', errorResponse.message);
+            // Add error message to history for context (but not the technical details)
+            this.addToHistory('assistant', userMessage);
 
             return errorResponse;
         }
@@ -495,8 +540,8 @@ class ChatManager {
         try {
             const { name, arguments: argsString } = functionCall;
 
-            // Add the assistant's function call to history
-            this.addToHistory('assistant', '', { function_call: functionCall });
+            // Add the assistant's function call to history (content should be null for function calls)
+            this.addToHistory('assistant', null, { function_call: functionCall });
 
             console.log(`🔧 Executing function: ${name}`);
 
@@ -534,6 +579,24 @@ class ChatManager {
         } catch (error) {
             console.error('❌ Error handling function call:', error.message);
 
+            // Categorize function execution errors
+            let errorType = 'FUNCTION_EXECUTION_ERROR';
+            let userMessage = `I encountered an error while executing the function: ${error.message}`;
+            
+            if (error.message.includes('timeout')) {
+                errorType = 'FUNCTION_TIMEOUT_ERROR';
+                userMessage = 'The function took too long to execute and was cancelled.';
+            } else if (error.message.includes('not found') || error.message.includes('not registered')) {
+                errorType = 'FUNCTION_NOT_FOUND_ERROR';
+                userMessage = 'The requested function is not available.';
+            } else if (error.message.includes('validation') || error.message.includes('arguments')) {
+                errorType = 'FUNCTION_VALIDATION_ERROR';
+                userMessage = 'The function was called with invalid arguments.';
+            } else if (error.message.includes('network') || error.message.includes('fetch')) {
+                errorType = 'FUNCTION_NETWORK_ERROR';
+                userMessage = 'The function failed due to a network issue.';
+            }
+
             // Add error to conversation history
             const errorMessage = `Function execution failed: ${error.message}`;
             this.addToHistory('function', errorMessage, { name: functionCall.name });
@@ -542,15 +605,18 @@ class ChatManager {
             try {
                 return await this.getFinalResponseAfterFunction();
             } catch (finalError) {
-                // If we can't get a final response, return error response
+                console.error('❌ Failed to get final response after function error:', finalError.message);
+                
+                // If we can't get a final response, return comprehensive error response
                 return {
                     success: false,
-                    message: `I encountered an error while executing the function: ${error.message}`,
+                    message: userMessage,
                     error: {
-                        type: 'FUNCTION_EXECUTION_ERROR',
+                        type: errorType,
                         message: error.message,
                         functionName: functionCall.name,
-                        timestamp: new Date().toISOString()
+                        timestamp: new Date().toISOString(),
+                        finalResponseError: finalError.message
                     },
                     requiresFunctionCall: false,
                     functionCall: null
@@ -567,6 +633,11 @@ class ChatManager {
         try {
             // Get current conversation history including function results
             const messages = this.getFormattedHistory();
+
+            // Debug logging for development
+            if (process.env.NODE_ENV === 'development') {
+                console.log('🔍 Messages being sent to OpenAI:', JSON.stringify(messages, null, 2));
+            }
 
             // Get available functions (in case model wants to call another function)
             const functions = this.functionRegistry.getFunctionSchemas();

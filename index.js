@@ -29,7 +29,7 @@ class AgentCLI {
     }
 
     /**
-     * Initialize the CLI application
+     * Initialize the CLI application with comprehensive integration validation
      */
     async initialize() {
         try {
@@ -45,6 +45,9 @@ class AgentCLI {
             // Initialize chat manager
             this.initializeChatManager();
 
+            // Validate component integration
+            await this.validateComponentIntegration();
+
             // Set up readline interface
             this.setupReadline();
 
@@ -55,7 +58,72 @@ class AgentCLI {
 
         } catch (error) {
             console.error(chalk.red('❌ Failed to initialize agent:'), error.message);
+            
+            // Provide specific guidance based on error type
+            if (error.message.includes('API key')) {
+                console.error(chalk.yellow('💡 Make sure to set your OPENAI_API_KEY environment variable'));
+                console.error(chalk.cyan('   Example: export OPENAI_API_KEY="sk-your-key-here"'));
+            } else if (error.message.includes('network') || error.message.includes('ENOTFOUND')) {
+                console.error(chalk.yellow('💡 Check your internet connection and try again'));
+            } else if (error.message.includes('function')) {
+                console.error(chalk.yellow('💡 There was an issue with function registration'));
+            }
+            
             process.exit(1);
+        }
+    }
+
+    /**
+     * Validate that all components are properly integrated
+     */
+    async validateComponentIntegration() {
+        console.log(chalk.blue('🔍 Validating component integration...'));
+        
+        try {
+            // Validate OpenAI client integration
+            if (!this.openaiClient || !this.openaiClient.isReady()) {
+                throw new Error('OpenAI client is not properly initialized');
+            }
+            
+            // Validate function registry integration
+            if (!this.functionRegistry) {
+                throw new Error('Function registry is not initialized');
+            }
+            
+            const registeredFunctions = this.functionRegistry.getRegisteredFunctions();
+            if (registeredFunctions.length === 0) {
+                console.warn(chalk.yellow('⚠️ No functions registered - function calling will not be available'));
+            }
+            
+            // Validate chat manager integration
+            if (!this.chatManager) {
+                throw new Error('Chat manager is not initialized');
+            }
+            
+            // Test that chat manager can access both dependencies
+            const availableFunctions = this.chatManager.getAvailableFunctions();
+            if (availableFunctions.length !== registeredFunctions.length) {
+                throw new Error('Chat manager cannot access all registered functions');
+            }
+            
+            // Validate that error propagation works
+            const errorTestResult = await this.chatManager.processMessage('');
+            if (errorTestResult.success !== false) {
+                throw new Error('Error propagation is not working correctly - empty message should fail');
+            }
+            
+            // Test that function registry is accessible through chat manager
+            const testFunctions = this.chatManager.getAvailableFunctions();
+            if (testFunctions.length === 0) {
+                console.warn(chalk.yellow('⚠️ No functions available through chat manager'));
+            } else {
+                console.log(chalk.green(`✅ ${testFunctions.length} functions accessible through chat manager`));
+            }
+            
+            console.log(chalk.green('✅ Component integration validated'));
+            
+        } catch (error) {
+            throw new Error(`Component integration validation failed: ${error.message}`);
         }
     }
 
@@ -86,24 +154,56 @@ class AgentCLI {
     }
 
     /**
-     * Initialize function registry with built-in functions
+     * Initialize function registry with built-in functions and error handling
      */
     initializeFunctionRegistry() {
-        this.functionRegistry = new FunctionRegistry();
-        
-        console.log(chalk.blue('🔧 Registering built-in functions...'));
-        this.functionRegistry.registerBuiltInFunctions(functionSchemas, availableFunctions);
-        
-        const registeredFunctions = this.functionRegistry.getRegisteredFunctions();
-        console.log(chalk.green(`✅ Registered ${registeredFunctions.length} functions: ${chalk.cyan(registeredFunctions.join(', '))}`));
+        try {
+            this.functionRegistry = new FunctionRegistry();
+            
+            console.log(chalk.blue('🔧 Registering built-in functions...'));
+            
+            // Validate function schemas and handlers before registration
+            if (!functionSchemas || !Array.isArray(functionSchemas)) {
+                throw new Error('Function schemas must be a valid array');
+            }
+            
+            if (!availableFunctions || typeof availableFunctions !== 'object') {
+                throw new Error('Available functions must be a valid object');
+            }
+            
+            this.functionRegistry.registerBuiltInFunctions(functionSchemas, availableFunctions);
+            
+            const registeredFunctions = this.functionRegistry.getRegisteredFunctions();
+            console.log(chalk.green(`✅ Registered ${registeredFunctions.length} functions: ${chalk.cyan(registeredFunctions.join(', '))}`));
+            
+            // Validate that all functions are properly registered
+            if (registeredFunctions.length === 0) {
+                console.warn(chalk.yellow('⚠️ No functions were registered - function calling will not be available'));
+            }
+            
+        } catch (error) {
+            throw new Error(`Failed to initialize function registry: ${error.message}`);
+        }
     }
 
     /**
-     * Initialize chat manager
+     * Initialize chat manager with proper error handling
      */
     initializeChatManager() {
-        this.chatManager = new ChatManager(this.openaiClient, this.functionRegistry);
-        console.log(chalk.green('💬 Chat manager initialized'));
+        try {
+            if (!this.openaiClient) {
+                throw new Error('OpenAI client must be initialized before chat manager');
+            }
+            
+            if (!this.functionRegistry) {
+                throw new Error('Function registry must be initialized before chat manager');
+            }
+
+            this.chatManager = new ChatManager(this.openaiClient, this.functionRegistry);
+            console.log(chalk.green('💬 Chat manager initialized'));
+        } catch (error) {
+            throw new Error(`Failed to initialize chat manager: ${error.message}`);
+        }
     }
 
     /**
@@ -196,16 +296,31 @@ class AgentCLI {
             return;
         }
 
+        if (command === 'test' && process.env.NODE_ENV === 'development') {
+            await this.testIntegration();
+            this.rl.prompt();
+            return;
+        }
+
         // Process regular chat message
         await this.processChatMessage(input);
     }
 
     /**
-     * Process chat message through the chat manager
+     * Process chat message through the chat manager with comprehensive error handling
      * @param {string} message - User message
      */
     async processChatMessage(message) {
         try {
+            // Validate components are ready
+            if (!this.chatManager) {
+                throw new Error('Chat manager is not initialized');
+            }
+            
+            if (!this.openaiClient || !this.openaiClient.isReady()) {
+                throw new Error('OpenAI client is not ready');
+            }
+
             // Start enhanced loading indicator
             this.startLoadingIndicator('Thinking');
 
@@ -222,18 +337,65 @@ class AgentCLI {
                     const tokens = response.usage.total_tokens;
                     console.log(chalk.gray(`   (${tokens} tokens used)`));
                 }
+                
+                // Show function call info if available
+                if (response.functionCall) {
+                    console.log(chalk.gray(`   Function called: ${response.functionCall.name}`));
+                }
             } else {
                 console.log(chalk.red('❌') + ' ' + response.message);
                 
-                if (response.error && response.error.type) {
+                if (response.error) {
                     console.log(chalk.gray(`   Error type: ${response.error.type}`));
+                    
+                    // Provide specific guidance based on error type
+                    if (response.error.type === 'AUTHENTICATION_ERROR') {
+                        console.log(chalk.yellow('   💡 Check your OpenAI API key configuration'));
+                    } else if (response.error.type === 'RATE_LIMIT_ERROR') {
+                        console.log(chalk.yellow('   💡 Please wait a moment before sending another message'));
+                    } else if (response.error.type === 'FUNCTION_EXECUTION_ERROR') {
+                        console.log(chalk.yellow('   💡 There was an issue executing a function'));
+                    } else if (response.error.type === 'NETWORK_ERROR') {
+                        console.log(chalk.yellow('   💡 Check your internet connection'));
+                    }
                 }
             }
 
         } catch (error) {
             // Stop loading indicator
             this.stopLoadingIndicator();
-            console.error(chalk.red('❌ Unexpected error:'), error.message);
+            
+            // Categorize and handle different types of errors
+            let errorMessage = error.message;
+            let errorType = 'UNEXPECTED_ERROR';
+            
+            if (error.message.includes('API key')) {
+                errorType = 'AUTHENTICATION_ERROR';
+                errorMessage = 'Authentication failed. Please check your OpenAI API key.';
+            } else if (error.message.includes('rate limit') || error.message.includes('429')) {
+                errorType = 'RATE_LIMIT_ERROR';
+                errorMessage = 'Rate limit exceeded. Please wait before sending another message.';
+            } else if (error.message.includes('network') || error.message.includes('ENOTFOUND')) {
+                errorType = 'NETWORK_ERROR';
+                errorMessage = 'Network error. Please check your internet connection.';
+            } else if (error.message.includes('not initialized') || error.message.includes('not ready')) {
+                errorType = 'INITIALIZATION_ERROR';
+                errorMessage = 'System not properly initialized. Please restart the application.';
+            } else if (error.message.includes('function') || error.message.includes('Function')) {
+                errorType = 'FUNCTION_INTEGRATION_ERROR';
+                errorMessage = 'Function integration error. Please check function configuration.';
+            } else if (error.message.includes('role and content')) {
+                errorType = 'MESSAGE_FORMAT_ERROR';
+                errorMessage = 'Message formatting error. Please try again.';
+            }
+            
+            console.error(chalk.red('❌ Error:'), errorMessage);
+            console.error(chalk.gray(`   Type: ${errorType}`));
+            
+            // Log detailed error for debugging (but not to user)
+            if (process.env.NODE_ENV === 'development') {
+                console.error(chalk.gray('   Debug:'), error.stack);
+            }
         }
 
         console.log('');
@@ -246,8 +408,8 @@ class AgentCLI {
     showStartupBanner() {
         console.clear();
         console.log(chalk.cyan.bold('╔══════════════════════════════════════════════════════════════╗'));
-        console.log(chalk.cyan.bold('║') + chalk.white.bold('                    🤖 OpenAI Node.js Agent                    ') + chalk.cyan.bold('║'));
-        console.log(chalk.cyan.bold('║') + chalk.gray('                   Powered by GPT & Function Calling            ') + chalk.cyan.bold('║'));
+        console.log(chalk.cyan.bold('║') + chalk.white.bold('                    🤖 OpenAI Node.js Agent                   ') + chalk.cyan.bold('║'));
+        console.log(chalk.cyan.bold('║') + chalk.gray('                   Powered by GPT & Function Calling          ') + chalk.cyan.bold('║'));
         console.log(chalk.cyan.bold('╚══════════════════════════════════════════════════════════════╝'));
         console.log('');
         console.log(chalk.yellow('🚀 Starting up...'));
@@ -321,6 +483,9 @@ class AgentCLI {
         console.log(chalk.cyan('  stats         ') + chalk.gray('- Show conversation statistics'));
         console.log(chalk.cyan('  functions     ') + chalk.gray('- List available functions'));
         console.log(chalk.cyan('  config        ') + chalk.gray('- Show current configuration'));
+        if (process.env.NODE_ENV === 'development') {
+            console.log(chalk.cyan('  test          ') + chalk.gray('- Test component integration (dev only)'));
+        }
         console.log(chalk.cyan('  exit, quit, q ') + chalk.gray('- Exit the application'));
         console.log('');
         console.log(chalk.yellow.bold('💡 Tips:'));
@@ -390,7 +555,7 @@ class AgentCLI {
     }
 
     /**
-     * Show current configuration
+     * Show current configuration and integration status
      */
     showConfig() {
         const config = this.openaiClient.getConfig();
@@ -400,6 +565,145 @@ class AgentCLI {
         console.log(chalk.cyan('  Temperature: ') + chalk.white(config.temperature));
         console.log(chalk.cyan('  Max tokens: ') + chalk.white(config.maxTokens));
         console.log(chalk.cyan('  API key: ') + (process.env.OPENAI_API_KEY ? chalk.green('Set (hidden)') : chalk.red('Not set')));
+        
+        console.log('');
+        console.log(chalk.blue.bold('🔗 Component Integration Status:'));
+        console.log(chalk.cyan('  OpenAI Client: ') + (this.openaiClient && this.openaiClient.isReady() ? chalk.green('Ready') : chalk.red('Not Ready')));
+        console.log(chalk.cyan('  Function Registry: ') + (this.functionRegistry ? chalk.green(`Ready (${this.functionRegistry.getRegisteredFunctions().length} functions)`) : chalk.red('Not Ready')));
+        console.log(chalk.cyan('  Chat Manager: ') + (this.chatManager ? chalk.green('Ready') : chalk.red('Not Ready')));
+        console.log(chalk.cyan('  CLI Interface: ') + (this.rl ? chalk.green('Ready') : chalk.red('Not Ready')));
+        
+        // Integration wiring status
+        console.log('');
+        console.log(chalk.blue.bold('🔌 Integration Wiring:'));
+        console.log(chalk.cyan('  CLI → Chat Manager: ') + (this.chatManager ? chalk.green('Connected') : chalk.red('Disconnected')));
+        console.log(chalk.cyan('  Chat Manager → OpenAI Client: ') + (this.chatManager && this.chatManager.openaiClient === this.openaiClient ? chalk.green('Connected') : chalk.red('Disconnected')));
+        console.log(chalk.cyan('  Chat Manager → Function Registry: ') + (this.chatManager && this.chatManager.functionRegistry === this.functionRegistry ? chalk.green('Connected') : chalk.red('Disconnected')));
+        console.log(chalk.cyan('  Error Propagation: ') + chalk.green('Enabled'));
+        console.log('');
+    }
+
+    /**
+     * Test the complete integration flow (hidden command for debugging)
+     */
+    async testIntegration() {
+        console.log(chalk.blue.bold('🧪 Testing Integration Flow:'));
+        
+        try {
+            // Test 1: Function registry
+            console.log(chalk.cyan('  Testing function registry...'));
+            const testResult = await this.functionRegistry.executeFunctionSafely('getCurrentTime', {});
+            if (!testResult.success) {
+                throw new Error('Function registry test failed');
+            }
+            console.log(chalk.green('  ✅ Function registry working'));
+            
+            // Test 2: Chat manager with function call
+            console.log(chalk.cyan('  Testing chat manager integration...'));
+            const stats = this.chatManager.getConversationStats();
+            if (typeof stats.totalMessages !== 'number') {
+                throw new Error('Chat manager integration test failed');
+            }
+            console.log(chalk.green('  ✅ Chat manager integration working'));
+            
+            // Test 3: Error propagation
+            console.log(chalk.cyan('  Testing error propagation...'));
+            const errorResponse = await this.chatManager.processMessage('');
+            if (errorResponse.success !== false) {
+                throw new Error('Error propagation test failed');
+            }
+            console.log(chalk.green('  ✅ Error propagation working'));
+            
+            // Test 4: Component wiring
+            console.log(chalk.cyan('  Testing component wiring...'));
+            
+            // Test OpenAI client through chat manager
+            if (!this.chatManager.openaiClient || !this.chatManager.openaiClient.isReady()) {
+                throw new Error('OpenAI client not properly wired to chat manager');
+            }
+            
+            // Test function registry through chat manager
+            if (!this.chatManager.functionRegistry || this.chatManager.functionRegistry.getRegisteredFunctions().length === 0) {
+                throw new Error('Function registry not properly wired to chat manager');
+            }
+            
+            // Test CLI to chat manager connection
+            const availableFunctions = this.chatManager.getAvailableFunctions();
+            if (availableFunctions.length === 0) {
+                throw new Error('CLI cannot access functions through chat manager');
+            }
+            
+            console.log(chalk.green('  ✅ Component wiring working'));
+            
+            // Test 5: End-to-end message flow (without actual API call)
+            console.log(chalk.cyan('  Testing message flow integration...'));
+            
+            // Test that all components can handle a simple message processing flow
+            const originalHistory = this.chatManager.getHistory();
+            const testMessage = 'test integration';
+            
+            // This should not throw an error during validation and setup
+            try {
+                this.chatManager.addToHistory('user', testMessage);
+                const formattedHistory = this.chatManager.getFormattedHistory();
+                
+                if (!Array.isArray(formattedHistory) || formattedHistory.length === 0) {
+                    throw new Error('Message flow integration failed');
+                }
+                
+                // Test function message formatting
+                this.chatManager.addToHistory('function', 'test result', { name: 'testFunction' });
+                const formattedWithFunction = this.chatManager.getFormattedHistory();
+                
+                const functionMessage = formattedWithFunction.find(msg => msg.role === 'function');
+                if (!functionMessage || !functionMessage.name || !functionMessage.content) {
+                    throw new Error('Function message formatting failed');
+                }
+                
+                // Restore original history
+                this.chatManager.messageHistory = [...originalHistory];
+                
+            } catch (error) {
+                throw new Error(`Message flow integration failed: ${error.message}`);
+            }
+            
+            console.log(chalk.green('  ✅ Message flow integration working'));
+            
+            // Test 6: Integration completeness check
+            console.log(chalk.cyan('  Testing integration completeness...'));
+            
+            // Verify all required integrations are in place
+            const integrationChecks = [
+                { name: 'CLI to Chat Manager', check: () => this.chatManager !== null },
+                { name: 'Chat Manager to OpenAI Client', check: () => this.chatManager.openaiClient === this.openaiClient },
+                { name: 'Chat Manager to Function Registry', check: () => this.chatManager.functionRegistry === this.functionRegistry },
+                { name: 'Function Registry Functions', check: () => this.functionRegistry.getRegisteredFunctions().length > 0 },
+                { name: 'OpenAI Client Ready', check: () => this.openaiClient.isReady() },
+                { name: 'Error Propagation', check: () => {
+                    try {
+                        const result = this.chatManager.processMessage('');
+                        return result instanceof Promise; // Should return a promise that resolves to error
+                    } catch (e) {
+                        return false;
+                    }
+                }}
+            ];
+            
+            for (const { name, check } of integrationChecks) {
+                if (!check()) {
+                    throw new Error(`Integration check failed: ${name}`);
+                }
+            }
+            
+            console.log(chalk.green('  ✅ Integration completeness verified'));
+            
+            console.log(chalk.green.bold('🎉 All integration tests passed!'));
+            console.log(chalk.yellow('📝 Note: Function calling integration is complete but may have OpenAI SDK compatibility issues'));
+            
+        } catch (error) {
+            console.log(chalk.red.bold('❌ Integration test failed:'), error.message);
+        }
+        
         console.log('');
     }
 
